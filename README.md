@@ -1,6 +1,6 @@
 # InkScribe – Real-Time Collaborative Writing Engine
 
-## Project Description
+## Project Description 
 
 **Abstract**
 InkScribe is an advanced InnovateInk infrastructure initiative focused on real-time collaborative writing engine. The project aims to create internet-scale systems capable of supporting millions of users while advancing publishing, intelligence, and knowledge infrastructure.
