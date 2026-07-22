@@ -1,4 +1,4 @@
-# InkScribe – Real-Time Collaborative Writing Engine
+# InkScribe – Real-Time Collaborative Writing Engine 
 
 Real-time collaborative writing engine built for the CUSoC (Chandigarh University Season of Code) program. InkScribe lets multiple users edit the same document simultaneously, similar to Google Docs, with live cursors and instant sync.
 
