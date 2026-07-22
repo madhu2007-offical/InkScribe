@@ -1,6 +1,10 @@
-import React, { useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
+import Collaboration from '@tiptap/extension-collaboration'
+import CollaborationCursor from '@tiptap/extension-collaboration-cursor'
+import * as Y from 'yjs'
+import { WebsocketProvider } from 'y-websocket'
 import {
   Bold,
   Italic,
@@ -21,53 +25,159 @@ import {
 } from 'lucide-react'
 import './Editor.css'
 
+// Helper to generate deterministic colors based on username
+function getRandomColor(name) {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  const colors = [
+    '#f87171', // Red
+    '#fb923c', // Orange
+    '#fbbf24', // Amber
+    '#34d399', // Emerald
+    '#22d3ee', // Cyan
+    '#60a5fa', // Blue
+    '#818cf8', // Indigo
+    '#c084fc', // Purple
+    '#f472b6'  // Pink
+  ]
+  return colors[Math.abs(hash) % colors.length]
+}
+
+// 1. Parent Wrapper: Handles Yjs Doc & WebSocket Provider Lifecycle
 export default function Editor({
   documentId,
-  title,
-  role = 'owner', // 'owner', 'editor', 'viewer'
+  role = 'owner',
   initialContent = '',
+  user = null,
   onSave,
   isSaving = false,
-  hasUnsavedChanges = false
+  onAwarenessUpdate // callback: (usersList) => void
 }) {
+  const [ydoc, setYdoc] = useState(null)
+  const [provider, setProvider] = useState(null)
+  const [isSynced, setIsSynced] = useState(false)
+
+  useEffect(() => {
+    if (!documentId) return
+
+    setIsSynced(false)
+    const y = new Y.Doc()
+    
+    // Connect to Yjs Sync Server (port 6000)
+    const wsUrl = 'ws://localhost:6000'
+    const p = new WebsocketProvider(wsUrl, documentId, y)
+
+    // Set local user awareness state
+    const userName = user?.name || user?.email || 'Collaborator'
+    const userColor = getRandomColor(userName)
+    
+    p.awareness.setLocalStateField('user', {
+      name: userName,
+      color: userColor
+    })
+
+    // Listen to changes in active users (awareness)
+    const handleAwarenessChange = () => {
+      const states = Array.from(p.awareness.getStates().values())
+      const activeUsers = states
+        .map((s) => s.user)
+        .filter(Boolean)
+        .map((u, index) => ({ id: index, ...u }))
+      
+      if (onAwarenessUpdate) {
+        onAwarenessUpdate(activeUsers)
+      }
+    }
+
+    p.awareness.on('change', handleAwarenessChange)
+    
+    // Check if synced
+    p.on('sync', (isSynced) => {
+      setIsSynced(isSynced)
+    })
+
+    setYdoc(y)
+    setProvider(p)
+
+    // Cleanup
+    return () => {
+      p.awareness.off('change', handleAwarenessChange)
+      p.destroy()
+      y.destroy()
+      if (onAwarenessUpdate) {
+        onAwarenessUpdate([])
+      }
+    }
+  }, [documentId, user])
+
+  if (!provider || !ydoc || !isSynced) {
+    return (
+      <div className="editor-container" style={{ justifyContent: 'center', alignItems: 'center', minHeight: '500px' }}>
+        <div className="counter">Connecting to real-time document sync...</div>
+      </div>
+    )
+  }
+
+  return (
+    <CollaborativeEditor
+      ydoc={ydoc}
+      provider={provider}
+      role={role}
+      initialContent={initialContent}
+      onSave={onSave}
+      isSaving={isSaving}
+    />
+  )
+}
+
+// 2. Child Component: Instantiates TipTap Editor with Yjs Extensions
+function CollaborativeEditor({ ydoc, provider, role, initialContent, onSave, isSaving }) {
   const isReadOnly = role === 'viewer'
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
 
   const editor = useEditor({
-    extensions: [StarterKit],
-    content: initialContent,
+    extensions: [
+      StarterKit.configure({
+        // Disable history because Collaboration handles history states
+        history: false
+      }),
+      Collaboration.configure({
+        document: ydoc
+      }),
+      CollaborationCursor.configure({
+        provider: provider,
+        user: provider.awareness.getLocalState()?.user || { name: 'Collaborator', color: '#aa3bff' }
+      })
+    ],
     editable: !isReadOnly,
-    onUpdate: ({ editor }) => {
-      // Trigger a change handler or local state tracking if needed
+    onUpdate: () => {
+      setHasUnsavedChanges(true)
     }
-  })
+  }, [ydoc, provider])
 
-  // Update content if initialContent changes (e.g. switching documents)
+  // Load database content if Yjs doc is empty
   useEffect(() => {
-    if (editor && initialContent !== undefined) {
-      const currentHTML = editor.getHTML()
-      // Avoid resetting cursor if the content is the same
-      if (initialContent !== currentHTML) {
+    if (editor && initialContent) {
+      // Check if Yjs document is empty (meaning first user opening it)
+      const textContent = editor.getText().trim()
+      if (textContent === '') {
         editor.commands.setContent(initialContent)
+        setHasUnsavedChanges(false)
       }
     }
   }, [editor, initialContent])
 
-  // Update editable state if role changes
+  // Update read-only state
   useEffect(() => {
     if (editor) {
       editor.setEditable(!isReadOnly)
     }
   }, [editor, isReadOnly])
 
-  if (!editor) {
-    return (
-      <div className="editor-container" style={{ justifyContent: 'center', alignItems: 'center' }}>
-        <div className="counter">Loading Editor Workspace...</div>
-      </div>
-    )
-  }
+  if (!editor) return null
 
-  // Calculate statistics
   const textContent = editor.getText()
   const charCount = textContent.length
   const wordCount = textContent.trim() === '' ? 0 : textContent.trim().split(/\s+/).length
@@ -75,6 +185,7 @@ export default function Editor({
   const handleSaveClick = () => {
     if (onSave) {
       onSave(editor.getHTML())
+      setHasUnsavedChanges(false)
     }
   }
 
@@ -198,7 +309,6 @@ export default function Editor({
           </button>
         </div>
 
-        {/* Save button for REST API manual triggers */}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
           {isReadOnly ? (
             <span style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text)' }}>
@@ -242,7 +352,7 @@ export default function Editor({
               ? 'Saving updates...'
               : hasUnsavedChanges
               ? 'Unsaved changes'
-              : 'All changes saved'}
+              : 'Synced & saved'}
           </span>
         </div>
       </div>
