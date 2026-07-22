@@ -1,0 +1,16 @@
+{
+  "name": "sync-server",
+  "version": "1.0.0",
+  "description": "Yjs WebSocket synchronization server for InkScribe",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "ws": "^8.17.0",
+    "y-websocket": "^2.0.4",
+    "yjs": "^13.6.31"
+  }
+}

@@ -3,6 +3,7 @@ import { LogOut, PenTool, Edit3 } from 'lucide-react'
 import LoginSignup from './components/LoginSignup.jsx'
 import DocumentList from './components/DocumentList.jsx'
 import Editor from './components/Editor.jsx'
+import Presence from './components/Presence.jsx'
 import './App.css'
 
 const API_BASE_URL = 'http://localhost:5000'
@@ -15,6 +16,7 @@ export default function App() {
   const [isAuthLoading, setIsAuthLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [activeUsers, setActiveUsers] = useState([])
 
   // 1. Verify token and load user profile on mount
   useEffect(() => {
@@ -260,10 +262,7 @@ export default function App() {
                 title={activeDoc.role === 'viewer' ? 'Title editing disabled' : 'Click to edit title'}
               />
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                {/* Active users cursors indicator (will be populated dynamically in Sprint 2) */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', color: 'var(--text)' }}>
-                  <Edit3 size={14} /> Active Doc
-                </div>
+                <Presence users={activeUsers} />
               </div>
             </div>
 
@@ -273,9 +272,10 @@ export default function App() {
                 title={activeDoc.title}
                 role={activeDoc.role}
                 initialContent={activeDoc.content}
+                user={user}
                 onSave={handleSaveDoc}
                 isSaving={isSaving}
-                hasUnsavedChanges={hasUnsavedChanges}
+                onAwarenessUpdate={setActiveUsers}
               />
             </div>
           </>
